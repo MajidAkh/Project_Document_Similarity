@@ -2,7 +2,9 @@ import sys
 import random
 import numpy as np
 import itertools
-
+import time
+import matplotlib.pyplot as plt
+import psutil 
 
 #List of each doc from the file.
 def get_outils():
@@ -46,6 +48,7 @@ def createShingle(Liste,k):
             sid.add(shingle_id[sh])
         m.append(sid)   
     return m, id_shingle
+
 
 
 
@@ -94,7 +97,7 @@ def convert_list_to_string(list):
 
 
 def lsh(signature, b, r):
-    size = len(signature[0])
+    S = np.array(signature)
     #bucket qui prends associes à chaque bande tous les doc ayant la band
     dict_of_bucket= {}
     #pair de tous les candidats potentiellement similaire
@@ -103,114 +106,123 @@ def lsh(signature, b, r):
     sub_list = []
     
     for band in range(b):
-        dict_of_bucket= {}
+        dict_of_bucket = {}
         
-        for i  in range(size):
-            sub_list = []
-            for el in range(band*r,band*r+r):
-                
-             
-        
-                
-                sub_list.append(signature[el][i])
+        for j  in range(len(S[0])):
+
+            sub_list.append(list(S[band*r:band *r + r,j]))
+            
             strband = convert_list_to_string(sub_list)
+            
+            sub_list = []
+            #print(strband)
             if strband in dict_of_bucket:
-                dict_of_bucket[strband].append(i)
+                dict_of_bucket[strband].append(j)
             else:
-                dict_of_bucket[strband] = [i]
+                dict_of_bucket[strband] = [j]
+        
         for doc_sim in dict_of_bucket:
+            
+        #print(doc_sim)
+            
+        
+            
             if len(dict_of_bucket[doc_sim]) > 1:
+              
+           
                 for pair in itertools.combinations(dict_of_bucket[doc_sim],2):
                     if pair in candidat:
                         candidat[pair] += 1
                     else:
-                        candidat[pair] = 0
+                            
+                            
+                        candidat[pair] = 1
                         
                     
     
-    
+    #print(candidat)
     return candidat
 
 
 
 
 #find candidate
-
-
 def pair_similarity(candidat,t,m):
-
+    
+    count = 0
     for i in candidat.keys():
                 if jaccard_similarity(m[i[0]], m[i[1]]) >= t:
                     valeur = jaccard_similarity(m[i[0]], m[i[1]])
                     print(i[0],i[1],valeur)
+                    count = count + 1
                     #print('\n')
-
-
-        
-
-
-
-def true_jacard_sim(m, treshold):
- 
-    true_result = dict()
-    number_of_true_resulat = 0
-    for i in range (0, len(m)):
-        for j in range(i+1, len(m)):
-            
-            jacard_simi = jaccard_similarity(m[i],m[j])
-            true_result[(i,j)] = jacard_simi
-            if jacard_simi >= treshold:
-                number_of_true_resulat += 1
-    return true_result, number_of_true_resulat
- 
-def truthness(liste, true_result, signature,t):
-    True_pos = 0
-    True_neg = 0
-    Fals_pos = 0
-    Fals_neg = 0
-
-    
-    for i in range(0, len(liste)):
-        for j in range(i+ 1, len(liste)):
-            signature_similarity = min_hash_similarity(signature,i, j)
-            if true_result[(i,j)] >= t:
-                if signature_similarity >= t:
-                    True_pos += 1
-                else:
-                    Fals_neg += 1
-            else:
-                
-                if signature_similarity <= t:
-                    Fals_pos += 1
-                else:
-                    True_neg += 1
-    return True_pos, True_neg, Fals_pos, Fals_neg
-    
-    
-    
-    
-     
-        
-    
-                
+    return count
+             
 def main():
-    
-    docs,k,t = get_outils()
-    n = 100
-    b=20
-    r=5
-    
-    m, id_shingle = createShingle(docs,k)
-    
-    S = gen_signature_matrix(m, n, id_shingle)
-    candidats = lsh(S,b,r)
-    result = pair_similarity(candidats, t,m)
-    true_res, number_of_true_res = true_jacard_sim(m, t)
-    print(truthness(m, true_res, S, t))
-    print(result)
+   
+    time_final = 0
+    time_line = []
+    memoire_global = []
+    faux_pos = []
+    faux_positive = 0
+   
+    bands = [5,10,15,20,25,30,40,50]
+    for b in bands:
+        for i in range(8):
+            n = 100
+            r = int(n/b)
+            starting_time = time.time() 
+            docs,k,t = get_outils() 
+            m, id_shingle = createShingle(docs,k)
+            S = gen_signature_matrix(m, n, id_shingle)
+            candidats = lsh(S,b,r)
+            
+            nbr_candidat = len(candidats)
+            count = pair_similarity(candidats, t,m)
+            
+            
+            time_final = time_final + time.time() - starting_time
+            if i == 1:
+
+                m = psutil.virtual_memory()
+   
+                memoire_global.append(m[3] / 10**6) 
+            faux_positive = faux_positive + nbr_candidat - count
+        
+        time_line.append(time_final/8)
+        time_final = 0
+        
+        faux_pos.append(faux_positive/8)
+        faux_positive = 0
+            
 
 
 
+    fig = plt.figure()
+    plt.title("time execution")
+    plt.xlabel('bands')
+    plt.ylabel('Time')
+    ax = fig.add_subplot(111)
+    ax.scatter(bands, time_line)
+    plt.show()
+    
+    fig = plt.figure()
+    plt.title("faux positif")
+    plt.xlabel('bands')
+    plt.ylabel('faux positif')
+    ax = fig.add_subplot(111)
+    ax.scatter(bands, faux_pos)
+    plt.show()
+
+
+    fig = plt.figure()
+    plt.title("memory used")
+    plt.xlabel('bands')
+    plt.ylabel('memory used')
+    ax = fig.add_subplot(111)
+    ax.scatter(bands, memoire_global)
+    plt.show()
+   
 if __name__ == '__main__':
 	main()
     
